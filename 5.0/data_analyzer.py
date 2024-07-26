@@ -1,30 +1,29 @@
 import pandas as pd
 import numpy as np
-from PyQt5.QtWidgets import QTextBrowser
+from PyQt5.QtCore import QStringListModel
 
 class DataAnalyzer:
-    def __init__(self, text_browsers):
+    def __init__(self, list_views):
         self.final_count_data_zero = []
         self.final_weather_state = []
         self.final_zero_state = []
         self.final_under_date = []
         self.final_count_data_name = []
         self.values_cnt = None
-        self.text_browsers = text_browsers
+        self.list_views = list_views
 
     def set_values_count(self, values_cnt):
         self.values_cnt = values_cnt
 
     def clean_data(self, data):
         filtered_data = data[~data.apply(lambda row: row.str.contains("조회된 이력이 없습니다.").all(), axis=1)]
-        # self.text_browsers[0].append("Filtered Data:\n" + filtered_data.to_string())  # 첫 번째 textBrowser에 추가
         return filtered_data
 
     def analyze_data(self, data_concat, bad_area):
         data_concat = self.clean_data(data_concat)
         if data_concat.empty:
             self.final_count_data_zero.append(bad_area)
-            self.text_browsers[0].append(bad_area)  # 첫 번째 textBrowser에 추가
+            self.append_to_list_view(self.list_views[0], bad_area)
             return
 
         time_data = data_concat[['관측시간']]
@@ -72,23 +71,29 @@ class DataAnalyzer:
                         if isinstance(recent_time, np.ndarray) and recent_time.size > 0:
                             datetime_str = recent_time[0]
                             self.final_count_data_name.append((bad_area, data_index_cnt, datetime_str))
-                            self.text_browsers[1].append(f"{bad_area}, {data_index_cnt}, {datetime_str}")  # 두 번째 textBrowser에 추가
+                            self.append_to_list_view(self.list_views[1], f"{bad_area}, {data_index_cnt}, {datetime_str}")
         
         if condition_zero.any():
             zero_values_mask = (normal_data == 0)
             zero_counts = zero_values_mask[['col1', 'col2', 'col3', 'col4', 'col5', 'col6']].sum().sum()
             if zero_values_mask.any().any():
                 self.final_zero_state.append((bad_area, zero_counts))
-                self.text_browsers[2].append(f"{bad_area}, {zero_counts}")  # 세 번째 textBrowser에 추가
+                self.append_to_list_view(self.list_views[2], f"{bad_area}, {zero_counts}")
 
         if condition_under.any():
             if final_result_data_tail_6.any() and not final_plus_result_data_tail_6.any():
                 min_value_row = time_add_result_data.tail(6).loc[time_add_result_data.tail(6).idxmin().min()]
                 self.final_under_date.append((bad_area, min_value_row))
-                self.text_browsers[4].append(f"{bad_area}")
+                self.append_to_list_view(self.list_views[4], f"{bad_area}")
                 
 
         if check_for_nan:
             nan_counts = result_nancheck.isnull().sum().sum()
             self.final_weather_state.append((bad_area, nan_counts))
-            self.text_browsers[3].append(bad_area)  # 네 번째 textBrowser에 추가
+            self.append_to_list_view(self.list_views[3], bad_area)
+
+    def append_to_list_view(self, list_view, text):
+        model = list_view.model()
+        current_list = model.stringList()
+        current_list.append(text)
+        model.setStringList(current_list)

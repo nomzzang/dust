@@ -4,15 +4,16 @@ from tqdm import tqdm
 from data_fetcher import DataFetcher
 from data_analyzer import DataAnalyzer
 from utils import calculate_values_count, calculate_page_count, get_area_name
-from PyQt5 import QtWidgets, uic
-from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
+from PyQt5 import QtWidgets, uic, QtCore
+from PyQt5.QtCore import QThread, pyqtSignal, QStringListModel, QUrl
+from PyQt5.QtGui import QDesktopServices
 
 class AnalyzerThread(QThread):
     analysis_done = pyqtSignal(object)  # 분석 완료 시그널, 분석기 객체 전달
     
-    def __init__(self, text_browsers):
+    def __init__(self, list_views):
         super().__init__()
-        self.text_browsers = text_browsers
+        self.list_views = list_views
         self.analyzer = None
 
     def run(self):
@@ -47,7 +48,7 @@ class AnalyzerThread(QThread):
         start = dt.datetime.now().strftime('%Y-%m-%d')
         end = dt.datetime.now().strftime('%Y-%m-%d')
 
-        self.analyzer = DataAnalyzer(self.text_browsers)
+        self.analyzer = DataAnalyzer(self.list_views)
         self.analyzer.set_values_count(values_cnt)
         
         for area in tqdm(total_area):
@@ -69,19 +70,64 @@ def display_results(analyzer):
     print(analyzer.final_under_date)
 
 def start_analysis(window):
-    text_browsers = [window.textBrowser_1, window.textBrowser_2, window.textBrowser_3, window.textBrowser_4, window.textBrowser_5]
-    analyzer_thread = AnalyzerThread(text_browsers)
+    list_views = [window.listView_1, window.listView_2, window.listView_3, window.listView_4, window.listView_5]
+    analyzer_thread = AnalyzerThread(list_views)
     analyzer_thread.analysis_done.connect(display_results)
     analyzer_thread.start()
+    
     return analyzer_thread
+
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+        uic.loadUi("C:\\SI\\Program\\dust\\5.0\\main.ui", self)
+
+        # 모델 생성 및 QListView에 설정
+        self.setup_list_view(self.listView_1)
+        self.setup_list_view(self.listView_2)
+        self.setup_list_view(self.listView_3)
+        self.setup_list_view(self.listView_4)
+        self.setup_list_view(self.listView_5)
+
+        # 분석 시작
+        self.analyzer_thread = start_analysis(self)
+
+    def setup_list_view(self, list_view):
+        model = QStringListModel()
+        list_view.setModel(model)
+        list_view.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)  # 더블 클릭 편집 비활성화
+        list_view.doubleClicked.connect(self.on_item_double_clicked)
+
+    def on_item_double_clicked(self, index):
+        text = index.data()
+        if text:
+            print(text)
+            area_code = self.extract_area_code(text)
+            start = dt.datetime.now().strftime('%Y-%m-%d')
+            end = dt.datetime.now().strftime('%Y-%m-%d')
+            self.open_in_browser(area_code, "1", start, end)
+    
+    def extract_area_code(self, text):
+        # 텍스트에서 area 코드를 추출하는 로직을 여기에 추가
+        # 예시: 텍스트가 "area_code: 0011, data: ..." 형태라면 아래와 같이 추출 가능
+        parts = text.split(",")
+        for part in parts:
+            if "area_code" in part:
+                return part.split(":")[1].strip()
+        return text  # 기본적으로 텍스트 자체를 반환
+
+    def open_in_browser(self, area_code, page, start, end):
+        # area_code에 맞는 URL 생성
+        url = QUrl(f"http://aican.nifos.go.kr/data/pastInfoVw.do?obsrrTpCd={area_code}&pageIndex={page}&fromDate={start}&toDate={end}")
+        if QDesktopServices.openUrl(url):
+            print(f"Opened {url.toString()} in default browser.")
+        else:
+            print(f"Failed to open {url.toString()}.")
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    window = uic.loadUi("main.ui")
+    window = MainWindow()
     window.show()
-
-    analyzer_thread = start_analysis(window)  # 분석 스레드 시작
-
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
